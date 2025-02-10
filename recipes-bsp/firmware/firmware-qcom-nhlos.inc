@@ -13,15 +13,18 @@ DEPENDS += "pil-squasher-native mtools-native"
 # script to let base.bbclass to pick up dependencies
 SRC_URI += "${NHLOS_URI}"
 
-handle_nonhlos_image() {
+unpack_nhlos_image() {
     mkdir -p ${B}/firmware
     mcopy -n -s -i "$1" ::/* ${B}/firmware/
+}
+
+handle_nonhlos_image() {
     for fw in ${B}/firmware/image/*.mdt ; do
         pil-squasher ${B}/`basename $fw mdt`mbn $fw || exit 1
     done
 }
 
-# If the URL is the file:// URI, the whole local path will be duplicated in the WORKDIR.
+# If the URL is the file:// URI, the whole local path will be duplicated in the UNPACKDIR.
 # Otherwise we just need the last (filename) part of the path.
 def get_nhlos_path(path):
     from urllib.parse import urlparse
@@ -33,8 +36,11 @@ def get_nhlos_path(path):
     return url.path.rsplit('/', 1)[1]
 
 do_compile:prepend() {
-    if [ -n "${NHLOS_URI}" ] ; then
-        handle_nonhlos_image ${WORKDIR}/${@get_nhlos_path(d.getVar("NHLOS_URI"))}
+    if [ -z "${NHLOS_URI}" ] ; then
+        bbwarn "${PN}: not packaging NHLOS firmware. Please provide HNLOS_URI"
+    else
+        unpack_nhlos_image ${UNPACKDIR}/${@get_nhlos_path(d.getVar("NHLOS_URI"))}
+        handle_nonhlos_image
     fi
 }
 
@@ -50,11 +56,4 @@ do_install:prepend() {
             install -m 0644 ${B}/firmware/image/$fw ${D}${FW_QCOM_PATH}
         fi
     done
-}
-
-# If firmware files are not provided, do not download/package anything
-python () {
-    uri = d.getVar("NHLOS_URI")
-    if uri == "":
-        bb.warn("%s: not packaging NHLOS firmware. Please provide HNLOS_URI" % d.getVar("PN"))
 }

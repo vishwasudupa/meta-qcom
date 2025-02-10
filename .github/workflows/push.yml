@@ -1,21 +1,24 @@
-name: Push build
+name: Build on push
 
 on:
   push:
     branches:
       - master
-      - honister
-      - dunfell
+
+permissions:
+  checks: write
+  pull-requests: write
+  contents: read
+  packages: read
 
 jobs:
   build:
-    uses: ./.github/workflows/build-template.yml
-    with:
-      host: ubuntu-20.04
-      images: core-image-base core-image-weston core-image-x11 initramfs-test-image initramfs-test-full-image initramfs-firmware-image initramfs-rootfs-image cryptodev-module
-      machines: qcom-armv8a qcom-armv7a-modem qcom-armv7a
-      ref: ${{github.sha}}
-      ref_type: sha
-      branch: ${{github.ref_name}}
-      url: ${{github.server_url}}/${{github.repository}}
+    uses: ./.github/workflows/build-yocto.yml
+  schema-check:
+    uses: ./.github/workflows/lava-schema-check.yml
+  test:
+    uses: ./.github/workflows/test.yml
+    needs: [build, schema-check]
     secrets: inherit
+    with:
+      url: ${{ needs.build.outputs.artifacts_url }}

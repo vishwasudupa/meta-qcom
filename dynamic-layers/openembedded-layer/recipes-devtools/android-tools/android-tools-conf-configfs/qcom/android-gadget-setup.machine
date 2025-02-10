@@ -2,3 +2,4 @@ manufacturer=Qualcomm
 model=`hostname`
 androidserial="$(sed 's/0x//' /sys/class/mmc_host/mmc0/mmc0:0001/serial)"
 [ -n "$androidserial" ] && serial="$androidserial"
+true

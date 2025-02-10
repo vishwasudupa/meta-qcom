@@ -1,3 +1,13 @@
+#
+# Copyright (c) 2015-2023 Linaro
+# Copyright (c) 2016 Matt Madison <matt@madison.systems>
+# Copyright (c) 2017 Artur Mądrzak <artur@madrzak.eu>
+# Copyright (c) 2024 Ola Jeppsson <ola@snap.com>
+# Copyright (c) 2024 Qualcomm Innovation Center, Inc.
+#
+# SPDX-License-Identifier: MIT
+#
+
 QIMG_DEPLOYDIR = "${WORKDIR}/qcom_deploy-${PN}"
 
 # Define INITRAMFS_IMAGE to create kernel+initramfs Android boot images in
@@ -27,8 +37,7 @@ python do_qcom_img_deploy() {
     initrd = None
     if d.getVar('INITRAMFS_IMAGE') != '':
         initrd_image_name = d.getVar("INITRAMFS_IMAGE_NAME")
-        initrd_image_suffix = d.getVar("IMAGE_NAME_SUFFIX")
-        baseinitrd = os.path.join(d.getVar("DEPLOY_DIR_IMAGE"), initrd_image_name + initrd_image_suffix)
+        baseinitrd = os.path.join(d.getVar("DEPLOY_DIR_IMAGE"), initrd_image_name)
         for img in (".cpio.gz", ".cpio.lz4", ".cpio.lzo", ".cpio.lzma", ".cpio.xz", ".cpio"):
             if os.path.exists(baseinitrd + img):
                 initrd = baseinitrd + img
@@ -39,7 +48,7 @@ python do_qcom_img_deploy() {
     B = d.getVar("B")
     D = d.getVar("D")
     kernel_output_dir = d.getVar("KERNEL_OUTPUT_DIR")
-    kernel_imagedest = d.getVar("KERNEL_IMAGEDEST")
+    kernel_dtbdest = d.getVar("KERNEL_DTBDEST")
     kernel = os.path.join(B, "kernel-dtb")
     definitrd = os.path.join(B, "initrd.img")
     mkbootimg = os.path.join(d.getVar("STAGING_BINDIR_NATIVE"), "skales", "mkbootimg")
@@ -69,16 +78,18 @@ python do_qcom_img_deploy() {
         dtb_name = dtb.rsplit('.', 1)[0]
 
         def getVarDTB(name):
-            return d.getVarFlag(name, dtb_name) or d.getVar(name)
+            var = d.getVarFlag(name, dtb_name)
+            return d.getVar(name) if var is None else var
 
         def make_image_internal(output, output_link, rootfs, initrd = definitrd):
+            rootfs_cmdline = "root=%s " % (rootfs) if rootfs else ""
             subprocess.check_call([mkbootimg,
                 "--kernel", kernel,
                 "--ramdisk", initrd,
                 "--output", output,
                 "--pagesize", getVarDTB("QCOM_BOOTIMG_PAGE_SIZE"),
                 "--base", getVarDTB("QCOM_BOOTIMG_KERNEL_BASE"),
-                "--cmdline", "root=%s rw rootwait %s %s" % (rootfs, consoles, getVarDTB("KERNEL_CMDLINE_EXTRA") or "")])
+                "--cmdline", "%srw rootwait %s %s" % (rootfs_cmdline, consoles, getVarDTB("KERNEL_CMDLINE_EXTRA") or "")])
             if os.path.exists(output_link):
                 os.unlink(output_link)
             os.symlink(os.path.basename(output), output_link)
@@ -105,11 +116,11 @@ python do_qcom_img_deploy() {
         with open(kernel, 'wb') as wfd:
             with open(os.path.join(kernel_output_dir, kernel_name), 'rb') as rfd:
                 shutil.copyfileobj(rfd, wfd)
-            with open(os.path.join(D, kernel_imagedest, dtb), 'rb') as rfd:
+            with open(os.path.join(D, kernel_dtbdest, dtb), 'rb') as rfd:
                 shutil.copyfileobj(rfd, wfd)
 
         rootfs = getVarDTB("QCOM_BOOTIMG_ROOTFS")
-        if not rootfs:
+        if rootfs is None:
             bb.fatal("QCOM_BOOTIMG_ROOTFS is undefined")
 
         output = make_image("boot-%s-%s.img", rootfs)
@@ -132,7 +143,7 @@ python do_qcom_img_deploy() {
 do_qcom_img_deploy[depends] += "skales-native:do_populate_sysroot"
 do_qcom_img_deploy[vardeps] = "QCOM_BOOTIMG_PAGE_SIZE QCOM_BOOTIMG_KERNEL_BASE KERNEL_CMDLINE_EXTRA QCOM_BOOTIMG_ROOTFS"
 
-addtask qcom_img_deploy after do_populate_sysroot do_packagedata bundle_initramfs before do_deploy
+addtask qcom_img_deploy after do_populate_sysroot do_packagedata do_bundle_initramfs before do_deploy
 
 # Setup sstate, see deploy.bbclass
 SSTATETASKS += "do_qcom_img_deploy"
